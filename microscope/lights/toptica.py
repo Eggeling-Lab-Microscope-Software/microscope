@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 
-## Copyright (C) 2020 David Miguel Susano Pinto <carandraug@gmail.com>
+# Copyright (C) 2020 David Miguel Susano Pinto <carandraug@gmail.com>
 ##
-## This file is part of Microscope.
+# This file is part of Microscope.
 ##
-## Microscope is free software: you can redistribute it and/or modify
-## it under the terms of the GNU General Public License as published by
-## the Free Software Foundation, either version 3 of the License, or
-## (at your option) any later version.
+# Microscope is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 ##
-## Microscope is distributed in the hope that it will be useful,
-## but WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-## GNU General Public License for more details.
+# Microscope is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 ##
-## You should have received a copy of the GNU General Public License
-## along with Microscope.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU General Public License
+# along with Microscope.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
 import re
@@ -80,6 +80,13 @@ class _iBeamConnection:
             dsrdtr=False,
         )
         self._serial = microscope._utils.SharedSerial(serial_conn)
+        self._autopulse_enabled = False
+
+        # Dummy autopulse values
+        # todo: there should be a way to 
+        # read these values from the device
+        self._autopulse_frequency = 1 # Hz
+        self._autopulse_dc = 50 # percentage
 
         # We don't know what is the current verbosity state and so we
         # don't know yet what we should be reading back.  So blindly
@@ -201,6 +208,40 @@ class _iBeamConnection:
             )
         return float(value[:-3])
 
+    def set_autopulse_enable(self, is_autopulse_on: bool) -> None:
+        """Enables/Disables the autopulse configuration."""
+        self._autopulse_enabled = is_autopulse_on
+        if self._autopulse_enabled:
+            self.command(b"pulse on")
+        else:
+            self.command(b"pulse off")
+
+    def set_autopulse_dc(self, duty_cycle: int) -> None:
+        """Sets the Autopulse duty cycle.
+        Duty cycle value is cropped between 1% and 99%.
+        If autopulse is disabled, command is skipped.
+        """
+        if self._autopulse_enabled:
+            if duty_cycle < 1:
+                duty_cycle = 1
+            elif duty_cycle > 99:
+                duty_cycle = 99
+            self.command(b"pulse duty %d" % duty_cycle)
+            self._autopulse_dc = duty_cycle
+
+    def set_autopulse_freq(self, frequency: int) -> None:
+        """Sets the Autopulse frequency.
+        Maximum frequency is 1 MHz (1e6 Hz), minimum frequency is 1 Hz.
+        If autopulse is disabled, command is skipped.
+        """
+        if self._autopulse_enabled:
+            if frequency > 1e6:
+                frequency = 1e6
+            elif frequency < 1:
+                frequency = 1
+            self.command(b"pulse freq %d" % frequency)
+            self._autopulse_frequency = frequency
+
 
 class TopticaiBeam(
     microscope._utils.OnlyTriggersBulbOnSoftwareMixin,
@@ -228,6 +269,9 @@ class TopticaiBeam(
         # ignoring it until then.  So we just leave the bias channel
         # (1) alone and control power via the normal channel (2).
         self._max_power = self._conn.show_max_power()
+        self.add_setting(name="Autopulse enable", dtype="bool",
+                         get_func=self._get_autopulse_enable, set_func=self._set_autopulse_enable)
+        self.add_setting(name="Autopulse frequency", dtype="int")
 
     def _do_shutdown(self) -> None:
         pass
@@ -253,11 +297,29 @@ class TopticaiBeam(
                 "Unexpected laser status: %s" % state.decode()
             )
 
+    def _get_autopulse_enable(self) -> bool:
+        return self._conn._autopulse_enabled
+    
+    def _get_autopulse_frequency(self) -> int:
+        return self._conn._autopulse_frequency
+    
+    def _get_autopulse_dc(self) -> int:
+        return self._conn._autopulse_dc
+
     def _get_max_power_mw(self) -> float:
         return self._max_power
 
     def _get_power_mw(self) -> float:
         return self._conn.show_power_uW() * (10 ** -3)
+
+    def _set_autopulse_enable(self, is_enable: bool) -> None:
+        self._conn.set_autopulse_enable(is_enable)
+    
+    def _set_autopulse_frequency(self, frequency: int) -> None:
+        self._conn.set_autopulse_freq(frequency)
+    
+    def _set_autopulse_dc(self, duty_cycle: int) -> None:
+        self._conn.set_autopulse_dc(duty_cycle)
 
     def _set_power_mw(self, mw: float) -> None:
         self._conn.set_normal_channel_power(mw)
