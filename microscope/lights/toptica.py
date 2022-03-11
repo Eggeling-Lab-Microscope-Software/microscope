@@ -83,10 +83,10 @@ class _iBeamConnection:
         self._autopulse_enabled = False
 
         # Dummy autopulse values
-        # todo: there should be a way to 
+        # todo: there should be a way to
         # read these values from the device
-        self._autopulse_frequency = 1 # Hz
-        self._autopulse_dc = 50 # percentage
+        self._autopulse_frequency = 1  # Hz
+        self._autopulse_dc = 50  # percentage
 
         # We don't know what is the current verbosity state and so we
         # don't know yet what we should be reading back.  So blindly
@@ -271,7 +271,10 @@ class TopticaiBeam(
         self._max_power = self._conn.show_max_power()
         self.add_setting(name="Autopulse enable", dtype="bool",
                          get_func=self._get_autopulse_enable, set_func=self._set_autopulse_enable)
-        self.add_setting(name="Autopulse frequency", dtype="int")
+        self.add_setting(name="Autopulse frequency", dtype="int",
+                         get_func=self._get_autopulse_frequency, set_func=self._set_autopulse_frequency)
+        self.add_setting(name="Autopulse duty cycle", dtype="int",
+                         get_func=self._get_autopulse_dc, set_func=self._set_autopulse_dc)
 
     def _do_shutdown(self) -> None:
         pass
@@ -299,10 +302,10 @@ class TopticaiBeam(
 
     def _get_autopulse_enable(self) -> bool:
         return self._conn._autopulse_enabled
-    
+
     def _get_autopulse_frequency(self) -> int:
         return self._conn._autopulse_frequency
-    
+
     def _get_autopulse_dc(self) -> int:
         return self._conn._autopulse_dc
 
@@ -314,10 +317,10 @@ class TopticaiBeam(
 
     def _set_autopulse_enable(self, is_enable: bool) -> None:
         self._conn.set_autopulse_enable(is_enable)
-    
+
     def _set_autopulse_frequency(self, frequency: int) -> None:
         self._conn.set_autopulse_freq(frequency)
-    
+
     def _set_autopulse_dc(self, duty_cycle: int) -> None:
         self._conn.set_autopulse_dc(duty_cycle)
 
