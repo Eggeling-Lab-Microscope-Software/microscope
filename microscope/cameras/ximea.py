@@ -77,6 +77,7 @@ _logger = logging.getLogger(__name__)
 # code so we can use while handling exceptions.
 _XI_TIMEOUT = 10
 _XI_NOT_SUPPORTED = 12
+_XI_NOT_IMPLEMENTED = 26
 _XI_ACQUISITION_STOPED = 45
 _XI_UNKNOWN_PARAM = 100
 
@@ -312,7 +313,7 @@ class XimeaCamera(microscope.abc.Camera):
             try:
                 get_temp_method()
             except xiapi.Xi_error as err:
-                if err.status != _XI_NOT_SUPPORTED:
+                if err.status != _XI_NOT_SUPPORTED and err.status != _XI_NOT_IMPLEMENTED:
                     raise
             else:
                 self.add_setting(
