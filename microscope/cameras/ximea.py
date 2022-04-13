@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 
-## Copyright (C) 2020 David Miguel Susano Pinto <carandraug@gmail.com>
-## Copyright (C) 2020 Ian Dobbie <ian.dobbie@bioch.ox.ac.uk>
-## Copyright (C) 2020 Mick Phillips <mick.phillips@gmail.com>
+# Copyright (C) 2020 David Miguel Susano Pinto <carandraug@gmail.com>
+# Copyright (C) 2020 Ian Dobbie <ian.dobbie@bioch.ox.ac.uk>
+# Copyright (C) 2020 Mick Phillips <mick.phillips@gmail.com>
 ##
-## This file is part of Microscope.
+# This file is part of Microscope.
 ##
-## Microscope is free software: you can redistribute it and/or modify
-## it under the terms of the GNU General Public License as published by
-## the Free Software Foundation, either version 3 of the License, or
-## (at your option) any later version.
+# Microscope is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 ##
-## Microscope is distributed in the hope that it will be useful,
-## but WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-## GNU General Public License for more details.
+# Microscope is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 ##
-## You should have received a copy of the GNU General Public License
-## along with Microscope.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU General Public License
+# along with Microscope.  If not, see <http://www.gnu.org/licenses/>.
 
 """Ximea cameras.
 
@@ -76,6 +76,7 @@ _logger = logging.getLogger(__name__)
 # error message but what we need is a symbol that maps to the error
 # code so we can use while handling exceptions.
 _XI_TIMEOUT = 10
+_XI_INVALID_ARGUMENTS = 11
 _XI_NOT_SUPPORTED = 12
 _XI_NOT_IMPLEMENTED = 26
 _XI_ACQUISITION_STOPED = 45
@@ -406,6 +407,46 @@ class XimeaCamera(microscope.abc.Camera):
                 self._handle.set_height(roi.height)
                 self._handle.set_offsetX(roi.left)
                 self._handle.set_offsetY(roi.top)
+        except xiapi.Xi_error as err:
+            if err.status == _XI_INVALID_ARGUMENTS:
+                with _disabled_camera(self):
+                    # we don't need to set again
+                    # the offsets to 0 as the exception
+                    # is thrown only starting from
+                    # set_width
+                    height = roi.height
+                    width = roi.width
+                    left = roi.left
+                    top = roi.top
+
+                    # TODO: maybe these if conditions
+                    # make the code less readable...
+                    if height != self._roi.height:
+                        h_incr = self._handle.get_height_increment()
+                        height = (round(height / h_incr) *
+                                  h_incr if (height % h_incr) != 0 else height)
+                        self._handle.set_height(height)
+
+                    if width != self._roi.width:
+                        w_incr = self._handle.get_width_increment()
+                        width = (round(width / w_incr) *
+                                 w_incr if (width % w_incr) != 0 else width)
+                        self._handle.set_width(width)
+
+                    if left != self._roi.left:
+                        l_incr = self._handle.get_offsetX_increment()
+                        left = (round(left / l_incr)*l_incr if (left %
+                                l_incr) != 0 else left)
+                        self._handle.set_offsetX(left)
+
+                    if top != self._roi.top:
+                        t_incr = self._handle.get_offsetY_increment()
+                        top = (round(top / t_incr)*t_incr if (top %
+                               t_incr) != 0 else top)
+                        self._handle.set_offsetY(top)
+                    # we change input parameter roi so that
+                    # the internal self._roi is updated as well
+                    roi = microscope.ROI(left, top, width, height)
         except Exception:
             self._set_roi(self._roi)  # set it back to whatever was before
             raise
