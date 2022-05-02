@@ -269,12 +269,12 @@ class TopticaiBeam(
         # ignoring it until then.  So we just leave the bias channel
         # (1) alone and control power via the normal channel (2).
         self._max_power = self._conn.show_max_power()
-        self.add_setting(name="Autopulse enable", dtype="bool",
-                         get_func=self._get_autopulse_enable, set_func=self._set_autopulse_enable)
-        self.add_setting(name="Autopulse frequency", dtype="int",
-                         get_func=self._get_autopulse_frequency, set_func=self._set_autopulse_frequency)
-        self.add_setting(name="Autopulse duty cycle", dtype="int",
-                         get_func=self._get_autopulse_dc, set_func=self._set_autopulse_dc)
+        self.add_setting(name="autopulse_en", dtype="bool",
+                         get_func=self._get_autopulse_enable, set_func=self._set_autopulse_enable, values=None)
+        self.add_setting(name="autopulse_freq", dtype="int",
+                         get_func=self._get_autopulse_frequency, set_func=self._set_autopulse_frequency, values=(1, 10e6))
+        self.add_setting(name="autopulse_dc", dtype="int",
+                         get_func=self._get_autopulse_dc, set_func=self._set_autopulse_dc, values=(1, 99))
 
     def _do_shutdown(self) -> None:
         pass
