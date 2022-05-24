@@ -123,6 +123,7 @@ class TrgSourceMap(enum.Enum):
     # The complete list is the XI_TRG_SOURCE enum (C code) or in the
     # xidefs module (Python code).
 
+    XI_TRG_OFF = microscope.TriggerType.OFF
     XI_TRG_SOFTWARE = microscope.TriggerType.SOFTWARE
     XI_TRG_EDGE_RISING = microscope.TriggerType.RISING_EDGE
     XI_TRG_EDGE_FALLING = microscope.TriggerType.FALLING_EDGE

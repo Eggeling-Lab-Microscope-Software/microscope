@@ -168,6 +168,8 @@ class TriggerType(enum.Enum):
         when level changes to high
     :const:`TriggerType.FALLING_EDGE`
         when level changes to low
+    :const:`TriggerType.OFF`
+        when no trigger is used (i.e. continous acquisition)
     """
 
     SOFTWARE = 0
@@ -176,6 +178,7 @@ class TriggerType(enum.Enum):
     FALLING_EDGE = 2
     LOW = 2
     PULSE = 3
+    OFF = 4
 
 
 class TriggerMode(enum.Enum):
