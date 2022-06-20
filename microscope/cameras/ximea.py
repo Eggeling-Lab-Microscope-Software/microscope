@@ -118,61 +118,12 @@ def _enabled_camera(camera):
         yield camera
 
 
-@enum.unique
-class TrgSourceMap(enum.Enum):
-    # The complete list is the XI_TRG_SOURCE enum (C code) or in the
-    # xidefs module (Python code).
-
-    XI_TRG_OFF = microscope.TriggerType.OFF
-    XI_TRG_SOFTWARE = microscope.TriggerType.SOFTWARE
-    XI_TRG_EDGE_RISING = microscope.TriggerType.RISING_EDGE
-    XI_TRG_EDGE_FALLING = microscope.TriggerType.FALLING_EDGE
-
-    # Not all XI_TRG_SOURCE values are defined:
-    #
-    # XI_TRG_OFF: Capture of next image is automatically started after
-    #   previous.
-    #
-    # XI_TRG_LEVEL_HIGH: Specifies that the trigger is considered
-    #   valid as long as the level of the source signal is high.
-    #
-    # XI_TRG_LEVEL_LOW: Specifies that the trigger is considered valid
-    #   as long as the level of the source signal is low.
-
-
-@enum.unique
-class TrgSelectorMap(enum.Enum):
-    # The complete list is the XI_TRG_SELECTOR enum (C code) or in the
-    # xidefs module (Python code).
-
-    # Trigger starts the capture of one frame.
-    XI_TRG_SEL_FRAME_START = microscope.TriggerMode.ONCE
-
-    # There are other modes/selector which look like they have matches
-    # on TriggerMode but we never got to test them:
-    #
-    # XI_TRG_SEL_EXPOSURE_ACTIVE: Trigger controls the start and
-    #   length of the exposure.
-    #
-    # XI_TRG_SEL_FRAME_BURST_START: Trigger starts the capture of the
-    #   bursts of frames in an acquisition.
-    #
-    # XI_TRG_SEL_FRAME_BURST_ACTIVE: Trigger controls the duration of
-    #   the capture of the bursts of frames in an acquisition.
-    #
-    # XI_TRG_SEL_MULTIPLE_EXPOSURES: Trigger which when first trigger
-    #   starts exposure and consequent pulses are gating
-    #   exposure(active HI)
-    #
-    # XI_TRG_SEL_EXPOSURE_START: Trigger controls the start of the
-    #   exposure of one Frame.
-    #
-    # XI_TRG_SEL_MULTI_SLOPE_PHASE_CHANGE: Trigger controls the multi
-    #   slope phase in one Frame (phase0 -> phase1) or (phase1 ->
-    #   phase2).
-    #
-    # XI_TRG_SEL_ACQUISITION_START: Trigger starts acquisition of
-    #   first frame.
+TRIGGER_TABLE: dict[tuple[microscope.TriggerType, microscope.TriggerMode], tuple[str, str]] = {
+    (microscope.TriggerType.SOFTWARE, microscope.TriggerMode.STROBE): ("XI_TRG_OFF", "XI_TRG_SEL_FRAME_START"),
+    (microscope.TriggerType.SOFTWARE, microscope.TriggerMode.ONCE): ("XI_TRG_SOFTWARE", "XI_TRG_SEL_FRAME_START"),
+    (microscope.TriggerType.RISING_EDGE, microscope.TriggerMode.ONCE): ("XI_TRG_EDGE_RISING", "XI_TRG_SEL_FRAME_START"),
+    (microscope.TriggerType.RISING_EDGE, microscope.TriggerMode.ONCE): ("XI_TRG_EDGE_RISING", "XI_TRG_SEL_FRAME_START")
+}
 
 
 class XimeaCamera(microscope.abc.Camera):
@@ -196,25 +147,8 @@ class XimeaCamera(microscope.abc.Camera):
         self._sensor_shape = (0, 0)
         self._roi = microscope.ROI(None, None, None, None)
         self._binning = microscope.Binning(1, 1)
-
-        # When using the Settings system, enums are not really enums
-        # and even when using lists we get indices sent back and forth
-        # (works fine only when using EnumInt.  The gymnastic here
-        # makes it work with the rest of enums which are there to make
-        # it work with TriggerTargetMixin.
-        trg_source_names = [x.name for x in TrgSourceMap]
-
-        def _trigger_source_setter(index: int) -> None:
-            trigger_mode = TrgSourceMap[trg_source_names[index]].value
-            self.set_trigger(trigger_mode, self.trigger_mode)
-
-        self.add_setting(
-            "trigger source",
-            "enum",
-            lambda: TrgSourceMap(self.trigger_type).name,
-            _trigger_source_setter,
-            trg_source_names,
-        )
+        self._trigger_map = TRIGGER_TABLE[(
+            microscope.TriggerType.SOFTWARE, microscope.TriggerMode.ONCE)]
 
         self.initialize()
 
@@ -362,7 +296,8 @@ class XimeaCamera(microscope.abc.Camera):
     def _do_trigger(self) -> None:
         # Value for set_trigger_software() has no meaning.  See
         # https://github.com/python-microscope/vendor-issues/issues/3
-        self._handle.set_trigger_software(1)
+        if self._trigger_map == TRIGGER_TABLE[(microscope.TriggerType.SOFTWARE, microscope.TriggerMode.ONCE)]:
+            self._handle.set_trigger_software(1)
 
     def _get_binning(self) -> microscope.Binning:
         return self._binning
@@ -466,42 +401,24 @@ class XimeaCamera(microscope.abc.Camera):
 
     @property
     def trigger_mode(self) -> microscope.TriggerMode:
-        trg_selector = self._handle.get_trigger_selector()
-        try:
-            tmode = TrgSelectorMap[trg_selector]
-        except KeyError:
-            raise Exception(
-                "somehow set to unsupported trigger mode %s" % trg_selector
-            )
-        return tmode.value
+        return self._trigger_map[1]
 
     @property
     def trigger_type(self) -> microscope.TriggerType:
-        trg_source = self._handle.get_trigger_source()
-        try:
-            ttype = TrgSourceMap[trg_source]
-        except KeyError:
-            raise Exception(
-                "somehow set to unsupported trigger type %s" % trg_source
-            )
-        return ttype.value
+        return self._trigger_map[0]
 
     def set_trigger(
         self, ttype: microscope.TriggerType, tmode: microscope.TriggerMode
     ) -> None:
-        if tmode is not microscope.TriggerMode.ONCE:
-            raise microscope.UnsupportedFeatureError(
-                "%s not supported (only TriggerMode.ONCE)" % tmode
-            )
-
         try:
-            trg_source = TrgSourceMap(ttype)
-        except ValueError:
+            new_map = TRIGGER_TABLE[(ttype, tmode)]
+        except KeyError:
             raise microscope.UnsupportedFeatureError(
-                "no support for trigger type %s" % ttype
+                f"TriggerType.{ttype.name} - TriggerMode.{tmode.name} not supported"
             )
 
-        if trg_source.name != self._handle.get_trigger_source():
-            # Changing trigger source requires stopping acquisition.
+        if new_map != self._trigger_map:
             with _disabled_camera(self):
-                self._handle.set_trigger_source(trg_source.name)
+                self._handle.set_trigger_source(new_map[0])
+                self._handle.set_trigger_selector(new_map[1])
+            self._trigger_map = new_map
