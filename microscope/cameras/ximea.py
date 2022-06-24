@@ -57,9 +57,9 @@ PyPI.  See Ximea's website for `install instructions
 """
 
 import contextlib
-import enum
 import logging
 import typing
+import time
 
 import numpy as np
 from ximea import xiapi
@@ -150,6 +150,18 @@ class XimeaCamera(microscope.abc.Camera):
         self._trigger_map = TRIGGER_TABLE[(
             microscope.TriggerType.SOFTWARE, microscope.TriggerMode.ONCE)]
 
+        self._delta_time = 0
+        self._timestamp_new_frame = 0
+        self._timestamp_prev_frame = 0
+
+        self.add_setting(
+            name="framerate",
+            dtype="float",
+            get_func=lambda : 1.0 / self._delta_time,
+            set_func=None,
+            values=tuple(),
+        )
+
         self.initialize()
 
     def _fetch_data(self) -> typing.Optional[np.ndarray]:
@@ -173,6 +185,7 @@ class XimeaCamera(microscope.abc.Camera):
             else:
                 raise
 
+        self._timestamp_new_frame: int = self._img.tsUSec
         data: np.ndarray = self._img.get_image_data_numpy()
         _logger.info(
             "Fetched imaged with dims %s and size %s.", data.shape, data.size
@@ -285,7 +298,7 @@ class XimeaCamera(microscope.abc.Camera):
         return self._handle.get_exposure() * 1.0e-6
 
     def get_cycle_time(self):
-        return 1.0 / self._handle.get_framerate()
+        return 1.0 / self._timestamp_new_frame
 
     def _get_sensor_shape(self) -> typing.Tuple[int, int]:
         return self._sensor_shape
@@ -422,3 +435,27 @@ class XimeaCamera(microscope.abc.Camera):
                 self._handle.set_trigger_source(new_map[0])
                 self._handle.set_trigger_selector(new_map[1])
             self._trigger_map = new_map
+
+    def _fetch_loop(self) -> None:
+        """ Hardware-specific implementation of the fetch loop, to allow accurate
+        timestamp calculation based on Ximea frame header data.
+        """
+        self._fetch_thread_run = True
+
+        while self._fetch_thread_run:
+            try:
+                data = self._fetch_data()
+            except Exception as e:
+                _logger.error("in _fetch_loop:", exc_info=e)
+                # Raising an exception will kill the fetch loop. We need
+                # another way to notify the client that there was a problem.
+                timestamp = time.time()
+                self._put(e, timestamp)
+                data = None
+            if data is not None:
+                self._delta_time = (
+                    self._timestamp_new_frame - self._timestamp_prev_frame)
+                self._put(data, self._timestamp_new_frame)
+                self._timestamp_prev_frame = self._timestamp_new_frame
+            else:
+                time.sleep(0.001)
